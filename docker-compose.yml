@@ -73,6 +73,7 @@ services:
         - backend
       links:
         - docker-in-docker
+      image: ${DOCKER_HUB_ID}/${REPOSITORY}:workspace
 
 ### PHP-FPM ##############################################
     php-fpm:
@@ -109,6 +110,7 @@ services:
         - backend
       links:
         - docker-in-docker
+      image: ${DOCKER_HUB_ID}/${REPOSITORY}:php-fpm
 
 ### NGINX Server #########################################
     nginx:
@@ -133,6 +135,7 @@ services:
       networks:
         - frontend
         - backend
+      image: ${DOCKER_HUB_ID}/${REPOSITORY}:nginx
 
 ### MySQL ################################################
     mysql:
@@ -153,6 +156,7 @@ services:
         - "${MYSQL_PORT}:3306"
       networks:
         - backend
+      image: ${DOCKER_HUB_ID}/${REPOSITORY}:mysql
 
 ### phpMyAdmin ###########################################
     phpmyadmin:
@@ -172,6 +176,7 @@ services:
       networks:
         - frontend
         - backend
+      image: ${DOCKER_HUB_ID}/${REPOSITORY}:phpmyadmin
 
 ### Docker-in-Docker ################################################
     docker-in-docker:
