@@ -2,11 +2,7 @@
 #--------------------------------------------------------------------------
 # Image Setup
 #--------------------------------------------------------------------------
-
-ARG KAMIDOCK_PHP_VERSION
-FROM laradock/workspace:latest-${KAMIDOCK_PHP_VERSION}
-
-ARG KAMIDOCK_PHP_VERSION
+FROM laradock/workspace:latest-8.1
 
 # Set Environment Variables
 ENV DEBIAN_FRONTEND noninteractive
@@ -20,18 +16,17 @@ USER root
 
 # Add a non-root user to prevent files being created with root permissions on host machine.
 ARG PUID=1000
-ENV PUID ${PUID}
 ARG PGID=1000
-ENV PGID ${PGID}
+ARG USERNAME
 
 # always run apt update when start and after add new source list, then clean up at end.
 RUN set -xe; \
-    apt-get update -yqq && \
+    apt update -yqq && \
     pecl channel-update pecl.php.net && \
-    groupadd -g ${PGID} kamidock && \
-    useradd -l -u ${PUID} -g kamidock -m kamidock -G docker_env && \
-    usermod -p "*" kamidock -s /bin/bash && \
-    apt-get install -yqq \
+    groupadd -g ${PGID} ${USERNAME} && \
+    useradd -l -u ${PUID} -g ${USERNAME} -m ${USERNAME} -G docker_env && \
+    usermod -p "*" ${USERNAME} -s /bin/bash && \
+    apt install -yqq \
       apt-utils \
       #
       #--------------------------------------------------------------------------
@@ -39,7 +34,7 @@ RUN set -xe; \
       #--------------------------------------------------------------------------
       libzip-dev zip unzip \
       # Install the zip extension
-      php${KAMIDOCK_PHP_VERSION}-zip \
+      php8.1-zip \
       # nasm
       nasm && \
       php -m | grep -q 'zip'
@@ -60,10 +55,7 @@ RUN set -xe; \
 # Set Timezone
 ###########################################################################
 
-ARG TZ=UTC
-ENV TZ ${TZ}
-
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+RUN ln -snf /usr/share/zoneinfo/UTC /etc/localtime && echo UTC> /etc/timezone
 
 ###########################################################################
 # User Aliases
@@ -72,17 +64,17 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 USER root
 
 COPY ./aliases.sh /root/aliases.sh
-COPY ./aliases.sh /home/kamidock/aliases.sh
+COPY ./aliases.sh /home/${USERNAME}/aliases.sh
 
 RUN sed -i 's/\r//' /root/aliases.sh && \
-    sed -i 's/\r//' /home/kamidock/aliases.sh && \
-    chown kamidock:kamidock /home/kamidock/aliases.sh && \
+    sed -i 's/\r//' /home/${USERNAME}/aliases.sh && \
+    chown ${USERNAME}:${USERNAME} /home/${USERNAME}/aliases.sh && \
     echo "" >> ~/.bashrc && \
     echo "# Load Custom Aliases" >> ~/.bashrc && \
     echo "source ~/aliases.sh" >> ~/.bashrc && \
 	  echo "" >> ~/.bashrc
 
-USER kamidock
+USER ${USERNAME}
 
 RUN echo "" >> ~/.bashrc && \
     echo "# Load Custom Aliases" >> ~/.bashrc && \
@@ -96,13 +88,13 @@ RUN echo "" >> ~/.bashrc && \
 USER root
 
 # Add the composer.json
-COPY ./composer.json /home/kamidock/.composer/composer.json
+COPY ./composer.json /home/${USERNAME}/.composer/composer.json
 
 # Add the auth.json for magento 2 credentials
-COPY ./auth.json /home/kamidock/.composer/auth.json
+COPY ./auth.json /home/${USERNAME}/.composer/auth.json
 
-# Make sure that ~/.composer belongs to kamidock
-RUN chown -R kamidock:kamidock /home/kamidock/.composer
+# Make sure that ~/.composer belongs to ${USERNAME}
+RUN chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.composer
 
 # Export composer vendor path
 RUN echo "" >> ~/.bashrc && \
@@ -118,32 +110,10 @@ RUN set -eux; \
           composer self-update ${COMPOSER_VERSION}; \
       fi
 
-USER kamidock
+USER ${USERNAME}
 
-# Check if global install need to be ran
-ARG COMPOSER_GLOBAL_INSTALL=false
-ENV COMPOSER_GLOBAL_INSTALL ${COMPOSER_GLOBAL_INSTALL}
-
-RUN if [ ${COMPOSER_GLOBAL_INSTALL} = true ]; then \
-    # run the install
-    composer global install \
-;fi
-
-# Check if auth file is disabled
-ARG COMPOSER_AUTH_JSON=false
-ENV COMPOSER_AUTH_JSON ${COMPOSER_AUTH_JSON}
-
-RUN if [ ${COMPOSER_AUTH_JSON} = false ]; then \
-    # remove the file
-    rm /home/kamidock/.composer/auth.json \
-;fi
-
-ARG COMPOSER_REPO_PACKAGIST
-ENV COMPOSER_REPO_PACKAGIST ${COMPOSER_REPO_PACKAGIST}
-
-RUN if [ ${COMPOSER_REPO_PACKAGIST} ]; then \
-    composer config -g repo.packagist composer ${COMPOSER_REPO_PACKAGIST} \
-;fi
+# Global install
+RUN composer global install
 
 # Export composer vendor path
 RUN echo "" >> ~/.bashrc && \
@@ -154,7 +124,7 @@ RUN echo "" >> ~/.bashrc && \
 ###########################################################################
 
 # add ./vendor/bin to non-root user's bashrc (needed for phpunit)
-USER kamidock
+USER ${USERNAME}
 
 RUN echo "" >> ~/.bashrc && \
     echo 'export PATH="/var/www/vendor/bin:$PATH"' >> ~/.bashrc
@@ -165,67 +135,40 @@ RUN echo "" >> ~/.bashrc && \
 
 USER root
 
-ARG INSTALL_XDEBUG=false
-
-RUN if [ ${INSTALL_XDEBUG} = true ]; then \
-  # Install the xdebug extension
-  # https://xdebug.org/docs/compat
-  apt-get install -yqq pkg-config php-xml php${KAMIDOCK_PHP_VERSION}-xml && \
-  if [ $(php -r "echo PHP_MAJOR_VERSION;") = "8" ] || { [ $(php -r "echo PHP_MAJOR_VERSION;") = "7" ] && { [ $(php -r "echo PHP_MINOR_VERSION;") = "4" ] || [ $(php -r "echo PHP_MINOR_VERSION;") = "3" ] ;} ;}; then \
-    pecl install xdebug-3.1.2; \
-  else \
-    if [ $(php -r "echo PHP_MAJOR_VERSION;") = "5" ]; then \
-      pecl install xdebug-2.5.5; \
-    else \
-      if [ $(php -r "echo PHP_MINOR_VERSION;") = "0" ]; then \
-        pecl install xdebug-2.9.0; \
-      else \
-        pecl install xdebug-2.9.8; \
-      fi \
-    fi \
-  fi && \
-  echo "zend_extension=xdebug.so" >> /etc/php/${KAMIDOCK_PHP_VERSION}/cli/conf.d/20-xdebug.ini \
-;fi
+RUN apt install -yqq pkg-config php-xml php8.1-xml && \
+    pecl install xdebug-3.1.2 && \
+    echo "zend_extension=xdebug.so" >> /etc/php/8.1/cli/conf.d/20-xdebug.ini
 
 # ADD for REMOTE debugging
-COPY ./xdebug.ini /etc/php/${KAMIDOCK_PHP_VERSION}/cli/conf.d/xdebug.ini
+COPY ./xdebug.ini /etc/php/8.1/cli/conf.d/xdebug.ini
 
-RUN if [ $(php -r "echo PHP_MAJOR_VERSION;") = "8" ]; then \
-  sed -i "s/xdebug.remote_host=/xdebug.client_host=/" /etc/php/${KAMIDOCK_PHP_VERSION}/cli/conf.d/xdebug.ini && \
-  sed -i "s/xdebug.remote_connect_back=0/xdebug.discover_client_host=false/" /etc/php/${KAMIDOCK_PHP_VERSION}/cli/conf.d/xdebug.ini && \
-  sed -i "s/xdebug.remote_port=9000/xdebug.client_port=9003/" /etc/php/${KAMIDOCK_PHP_VERSION}/cli/conf.d/xdebug.ini && \
-  sed -i "s/xdebug.profiler_enable=0/; xdebug.profiler_enable=0/" /etc/php/${KAMIDOCK_PHP_VERSION}/cli/conf.d/xdebug.ini && \
-  sed -i "s/xdebug.profiler_output_dir=/xdebug.output_dir=/" /etc/php/${KAMIDOCK_PHP_VERSION}/cli/conf.d/xdebug.ini && \
-  sed -i "s/xdebug.remote_mode=req/; xdebug.remote_mode=req/" /etc/php/${KAMIDOCK_PHP_VERSION}/cli/conf.d/xdebug.ini && \
-  sed -i "s/xdebug.remote_autostart=0/xdebug.start_with_request=yes/" /etc/php/${KAMIDOCK_PHP_VERSION}/cli/conf.d/xdebug.ini && \
-  sed -i "s/xdebug.remote_enable=0/xdebug.mode=debug/" /etc/php/${KAMIDOCK_PHP_VERSION}/cli/conf.d/xdebug.ini \
-;else \
-  sed -i "s/xdebug.remote_autostart=0/xdebug.remote_autostart=1/" /etc/php/${KAMIDOCK_PHP_VERSION}/cli/conf.d/xdebug.ini && \
-  sed -i "s/xdebug.remote_enable=0/xdebug.remote_enable=1/" /etc/php/${KAMIDOCK_PHP_VERSION}/cli/conf.d/xdebug.ini \
-;fi
-RUN sed -i "s/xdebug.cli_color=0/xdebug.cli_color=1/" /etc/php/${KAMIDOCK_PHP_VERSION}/cli/conf.d/xdebug.ini
+RUN sed -i "s/xdebug.remote_host=/xdebug.client_host=/" /etc/php/8.1/cli/conf.d/xdebug.ini && \
+  sed -i "s/xdebug.remote_connect_back=0/xdebug.discover_client_host=false/" /etc/php/8.1/cli/conf.d/xdebug.ini && \
+  sed -i "s/xdebug.remote_port=9000/xdebug.client_port=9003/" /etc/php/8.1/cli/conf.d/xdebug.ini && \
+  sed -i "s/xdebug.profiler_enable=0/; xdebug.profiler_enable=0/" /etc/php/8.1/cli/conf.d/xdebug.ini && \
+  sed -i "s/xdebug.profiler_output_dir=/xdebug.output_dir=/" /etc/php/8.1/cli/conf.d/xdebug.ini && \
+  sed -i "s/xdebug.remote_mode=req/; xdebug.remote_mode=req/" /etc/php/8.1/cli/conf.d/xdebug.ini && \
+  sed -i "s/xdebug.remote_autostart=0/xdebug.start_with_request=yes/" /etc/php/8.1/cli/conf.d/xdebug.ini && \
+  sed -i "s/xdebug.remote_enable=0/xdebug.mode=debug/" /etc/php/8.1/cli/conf.d/xdebug.ini
 
+RUN sed -i "s/xdebug.cli_color=0/xdebug.cli_color=1/" /etc/php/8.1/cli/conf.d/xdebug.ini
 
 ###########################################################################
 # ssh:
 ###########################################################################
 
-ARG INSTALL_WORKSPACE_SSH=false
-
 COPY insecure_id_rsa /tmp/id_rsa
 COPY insecure_id_rsa.pub /tmp/id_rsa.pub
 
-RUN if [ ${INSTALL_WORKSPACE_SSH} = true ]; then \
-    rm -f /etc/service/sshd/down && \
+RUN rm -f /etc/service/sshd/down && \
     cat /tmp/id_rsa.pub >> /root/.ssh/authorized_keys \
         && cat /tmp/id_rsa.pub >> /root/.ssh/id_rsa.pub \
         && cat /tmp/id_rsa >> /root/.ssh/id_rsa \
         && rm -f /tmp/id_rsa* \
         && chmod 644 /root/.ssh/authorized_keys /root/.ssh/id_rsa.pub \
     && chmod 400 /root/.ssh/id_rsa \
-    && cp -rf /root/.ssh /home/kamidock \
-    && chown -R kamidock:kamidock /home/kamidock/.ssh \
-;fi
+    && cp -rf /root/.ssh /home/${USERNAME} \
+    && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.ssh
 
 ###########################################################################
 # Node / NVM:
@@ -234,10 +177,6 @@ RUN if [ ${INSTALL_WORKSPACE_SSH} = true ]; then \
 # Check if NVM needs to be installed
 ARG NODE_VERSION=node
 ENV NODE_VERSION ${NODE_VERSION}
-ARG INSTALL_NODE=false
-ARG INSTALL_NPM_VUE_CLI=false
-ARG NPM_REGISTRY
-ENV NPM_REGISTRY ${NPM_REGISTRY}
 ARG NPM_FETCH_RETRIES
 ENV NPM_FETCH_RETRIES ${NPM_FETCH_RETRIES}
 ARG NPM_FETCH_RETRY_FACTOR
@@ -246,13 +185,10 @@ ARG NPM_FETCH_RETRY_MINTIMEOUT
 ENV NPM_FETCH_RETRY_MINTIMEOUT ${NPM_FETCH_RETRY_MINTIMEOUT}
 ARG NPM_FETCH_RETRY_MAXTIMEOUT
 ENV NPM_FETCH_RETRY_MAXTIMEOUT ${NPM_FETCH_RETRY_MAXTIMEOUT}
-ENV NVM_DIR /home/kamidock/.nvm
-ARG NVM_NODEJS_ORG_MIRROR
-ENV NVM_NODEJS_ORG_MIRROR ${NVM_NODEJS_ORG_MIRROR}
+ENV NVM_DIR /home/${USERNAME}/.nvm
 
-RUN if [ ${INSTALL_NODE} = true ]; then \
-    # Install nvm (A Node Version Manager)
-    mkdir -p $NVM_DIR && \
+# Install nvm (A Node Version Manager)
+RUN mkdir -p $NVM_DIR && \
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash \
         && . $NVM_DIR/nvm.sh \
         && nvm install ${NODE_VERSION} \
@@ -265,45 +201,30 @@ RUN if [ ${INSTALL_NODE} = true ]; then \
         && if [ ${NPM_REGISTRY} ]; then \
         npm config set registry ${NPM_REGISTRY} \
         ;fi \
-        && if [ ${INSTALL_NPM_GULP} = true ]; then \
-        npm install -g gulp \
-        ;fi \
-        && if [ ${INSTALL_NPM_BOWER} = true ]; then \
-        npm install -g bower \
-        ;fi \
         && if [ ${INSTALL_NPM_VUE_CLI} = true ]; then \
         npm install -g @vue/cli \
         ;fi \
-        && if [ ${INSTALL_NPM_ANGULAR_CLI} = true ]; then \
-        npm install -g @angular/cli \
-        ;fi \
-        && ln -s `npm bin --global` /home/kamidock/.node-bin \
-;fi
+        && ln -s `npm bin --global` /home/${USERNAME}/.node-bin
 
 # Wouldn't execute when added to the RUN statement in the above block
 # Source NVM when loading bash since ~/.profile isn't loaded on non-login shell
-RUN if [ ${INSTALL_NODE} = true ]; then \
-    echo "" >> ~/.bashrc && \
+RUN echo "" >> ~/.bashrc && \
     echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.bashrc && \
-    echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"  # This loads nvm' >> ~/.bashrc \
-;fi
+    echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"  # This loads nvm' >> ~/.bashrc
 
 # Add NVM binaries to root's .bashrc
 USER root
 
-RUN if [ ${INSTALL_NODE} = true ]; then \
-    echo "" >> ~/.bashrc && \
-    echo 'export NVM_DIR="/home/kamidock/.nvm"' >> ~/.bashrc && \
-    echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"  # This loads nvm' >> ~/.bashrc \
-;fi
+RUN echo "" >> ~/.bashrc && \
+    echo 'export NVM_DIR="/home/${USERNAME}/.nvm"' >> ~/.bashrc && \
+    echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"  # This loads nvm' >> ~/.bashrc
 
 # Add PATH for node
-ENV PATH $PATH:/home/kamidock/.node-bin
+ENV PATH $PATH:/home/${USERNAME}/.node-bin
 
 # Make it so the node modules can be executed with 'docker-compose exec'
 # We'll create symbolic links into '/usr/local/bin'.
-RUN if [ ${INSTALL_NODE} = true ]; then \
-    find $NVM_DIR -type f -name node -exec ln -s {} /usr/local/bin/node \; && \
+RUN find $NVM_DIR -type f -name node -exec ln -s {} /usr/local/bin/node \; && \
     NODE_MODS_DIR="$NVM_DIR/versions/node/$(node -v)/lib/node_modules" && \
     ln -s $NODE_MODS_DIR/bower/bin/bower /usr/local/bin/bower && \
     ln -s $NODE_MODS_DIR/gulp/bin/gulp.js /usr/local/bin/gulp && \
@@ -311,8 +232,7 @@ RUN if [ ${INSTALL_NODE} = true ]; then \
     ln -s $NODE_MODS_DIR/npm/bin/npx-cli.js /usr/local/bin/npx && \
     ln -s $NODE_MODS_DIR/vue-cli/bin/vue /usr/local/bin/vue && \
     ln -s $NODE_MODS_DIR/vue-cli/bin/vue-init /usr/local/bin/vue-init && \
-    ln -s $NODE_MODS_DIR/vue-cli/bin/vue-list /usr/local/bin/vue-list \
-;fi
+    ln -s $NODE_MODS_DIR/vue-cli/bin/vue-list /usr/local/bin/vue-list 
 
 RUN if [ ${NPM_REGISTRY} ]; then \
     . ~/.bashrc && npm config set registry ${NPM_REGISTRY} \
@@ -320,27 +240,13 @@ RUN if [ ${NPM_REGISTRY} ]; then \
 
 # Mount .npmrc into home folder
 COPY ./.npmrc /root/.npmrc
-COPY ./.npmrc /home/kamidock/.npmrc
-
-
-###########################################################################
-# PNPM:
-###########################################################################
-
-USER kamidock
-
-ARG INSTALL_PNPM=false
-
-RUN if [ ${INSTALL_PNPM} = true ]; then \
-    npx pnpm add -g pnpm \
-;fi
-
+COPY ./.npmrc /home/${USERNAME}/.npmrc
 
 ###########################################################################
 # YARN:
 ###########################################################################
 
-USER kamidock
+USER ${USERNAME}
 
 ARG INSTALL_YARN=false
 ARG YARN_VERSION=latest
@@ -362,12 +268,12 @@ USER root
 
 RUN if [ ${INSTALL_YARN} = true ]; then \
     echo "" >> ~/.bashrc && \
-    echo 'export YARN_DIR="/home/kamidock/.yarn"' >> ~/.bashrc && \
+    echo 'export YARN_DIR="/home/${USERNAME}/.yarn"' >> ~/.bashrc && \
     echo 'export PATH="$YARN_DIR/bin:$PATH"' >> ~/.bashrc \
 ;fi
 
 # Add PATH for YARN
-ENV PATH $PATH:/home/kamidock/.yarn/bin
+ENV PATH $PATH:/home/${USERNAME}/.yarn/bin
 
 ###########################################################################
 # PYTHON2:
@@ -388,22 +294,19 @@ RUN if [ ${INSTALL_PYTHON} = true ]; then \
 # PYTHON3:
 ###########################################################################
 
-ARG INSTALL_PYTHON3=false
 
-RUN if [ ${INSTALL_PYTHON3} = true ]; then \
-  apt-get -y install python3 python3-dev build-essential  \
+RUN apt -y install python3 python3-dev build-essential  \
   && curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py  \
   && python3 get-pip.py  \
   && rm get-pip.py  \
   && python3 -m pip install --upgrade --force-reinstall pip  \
-  && python3 -m pip install --upgrade virtualenv \
-;fi
+  && python3 -m pip install --upgrade virtualenv
 
 ###########################################################################
 # Check PHP version:
 ###########################################################################
 
-RUN set -xe; php -v | head -n 1 | grep -q "PHP ${KAMIDOCK_PHP_VERSION}."
+RUN set -xe; php -v | head -n 1 | grep -q "PHP 8.1"
 
 ###########################################################################
 # Oh My ZSH!
@@ -412,17 +315,14 @@ RUN set -xe; php -v | head -n 1 | grep -q "PHP ${KAMIDOCK_PHP_VERSION}."
 USER root
 
 ARG SHELL_OH_MY_ZSH=false
-RUN if [ ${SHELL_OH_MY_ZSH} = true ]; then \
-    apt install -y zsh \
-;fi
+RUN apt install -y zsh
 
 ARG SHELL_OH_MY_ZSH_AUTOSUGESTIONS=false
 ARG SHELL_OH_MY_ZSH_ALIASES=false
 
-USER kamidock
-RUN if [ ${SHELL_OH_MY_ZSH} = true ]; then \
-    sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh) --keep-zshrc" && \
-    sed -i -r 's/^plugins=\(.*?\)$/plugins=(laravel5)/' /home/kamidock/.zshrc && \
+USER ${USERNAME}
+RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh) --keep-zshrc" && \
+    sed -i -r 's/^plugins=\(.*?\)$/plugins=(artisan)/' /home/${USERNAME}/.zshrc && \
     echo '\n\
 bindkey "^[OB" down-line-or-search\n\
 bindkey "^[OC" forward-char\n\
@@ -434,24 +334,13 @@ bindkey "^[[3~" delete-char\n\
 bindkey "^[[4~" end-of-line\n\
 bindkey "^[[5~" up-line-or-history\n\
 bindkey "^[[6~" down-line-or-history\n\
-bindkey "^?" backward-delete-char\n' >> /home/kamidock/.zshrc && \
-  if [ ${SHELL_OH_MY_ZSH_AUTOSUGESTIONS} = true ]; then \
-    sh -c "git clone https://github.com/zsh-users/zsh-autosuggestions /home/kamidock/.oh-my-zsh/custom/plugins/zsh-autosuggestions" && \
-    sed -i 's~plugins=(~plugins=(zsh-autosuggestions ~g' /home/kamidock/.zshrc && \
-    sed -i '1iZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20' /home/kamidock/.zshrc && \
-    sed -i '1iZSH_AUTOSUGGEST_STRATEGY=(history completion)' /home/kamidock/.zshrc && \
-    sed -i '1iZSH_AUTOSUGGEST_USE_ASYNC=1' /home/kamidock/.zshrc && \
-    sed -i '1iTERM=xterm-256color' /home/kamidock/.zshrc \
-  ;fi && \
-  if [ ${SHELL_OH_MY_ZSH_ALIASES} = true ]; then \
-    echo "" >> /home/kamidock/.zshrc && \
-    echo "# Load Custom Aliases" >> /home/kamidock/.zshrc && \
-    echo "source /home/kamidock/aliases.sh" >> /home/kamidock/.zshrc && \
-    echo "" >> /home/kamidock/.zshrc \
-  ;fi \
-;fi
-
-USER root
+bindkey "^?" backward-delete-char\n' >> /home/${USERNAME}/.zshrc && \
+  sh -c "git clone https://github.com/zsh-users/zsh-autosuggestions /home/${USERNAME}/.oh-my-zsh/custom/plugins/zsh-autosuggestions" && \
+  sed -i 's~plugins=(~plugins=(zsh-autosuggestions ~g' /home/${USERNAME}/.zshrc && \
+  sed -i '1iZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20' /home/${USERNAME}/.zshrc && \
+  sed -i '1iZSH_AUTOSUGGEST_STRATEGY=(history completion)' /home/${USERNAME}/.zshrc && \
+  sed -i '1iZSH_AUTOSUGGEST_USE_ASYNC=1' /home/${USERNAME}/.zshrc && \
+  sed -i '1iTERM=xterm-256color' /home/${USERNAME}/.zshrc 
 
 ###########################################################################
 # ZSH User Aliases
@@ -460,26 +349,22 @@ USER root
 USER root
 
 COPY ./aliases.sh /root/aliases.sh
-COPY ./aliases.sh /home/kamidock/aliases.sh
+COPY ./aliases.sh /home/${USERNAME}/aliases.sh
 
-RUN if [ ${SHELL_OH_MY_ZSH} = true ]; then \
-    sed -i 's/\r//' /root/aliases.sh && \
-    sed -i 's/\r//' /home/kamidock/aliases.sh && \
-    chown kamidock:kamidock /home/kamidock/aliases.sh && \
+RUN sed -i 's/\r//' /root/aliases.sh && \
+    sed -i 's/\r//' /home/${USERNAME}/aliases.sh && \
+    chown ${USERNAME}:${USERNAME} /home/${USERNAME}/aliases.sh && \
     echo "" >> ~/.zshrc && \
     echo "# Load Custom Aliases" >> ~/.zshrc && \
     echo "source ~/aliases.sh" >> ~/.zshrc && \
-	  echo "" >> ~/.zshrc \
-;fi
+	  echo "" >> ~/.zshrc 
 
-USER kamidock
+USER ${USERNAME}
 
-RUN if [ ${SHELL_OH_MY_ZSH} = true ]; then \
-    echo "" >> ~/.zshrc && \
+RUN echo "" >> ~/.zshrc && \
     echo "# Load Custom Aliases" >> ~/.zshrc && \
     echo "source ~/aliases.sh" >> ~/.zshrc && \
-	  echo "" >> ~/.zshrc \
-;fi
+	  echo "" >> ~/.zshrc
 
 #
 #--------------------------------------------------------------------------
@@ -490,7 +375,7 @@ RUN if [ ${SHELL_OH_MY_ZSH} = true ]; then \
 USER root
 
 # Clean up
-RUN apt-get clean && \
+RUN apt clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
     rm /var/log/lastlog /var/log/faillog
 

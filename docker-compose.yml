@@ -15,37 +15,12 @@ volumes:
 
 services:
 
-### Workspace Utilities ##################################
+## Workspace Utilities ##################################
     workspace:
       build:
         context: ./workspace
         args:
-          - SHELL_OH_MY_ZSH=${SHELL_OH_MY_ZSH}
-          - SHELL_OH_MY_ZSH_AUTOSUGESTIONS=${SHELL_OH_MY_ZSH_AUTOSUGESTIONS}
-          - SHELL_OH_MY_ZSH_ALIASES=${SHELL_OH_MY_ZSH_ALIASES}
-          - KAMIDOCK_PHP_VERSION=${PHP_VERSION}
-          - INSTALL_XDEBUG=${WORKSPACE_INSTALL_XDEBUG}
-          - NVM_NODEJS_ORG_MIRROR=${WORKSPACE_NVM_NODEJS_ORG_MIRROR}
-          - INSTALL_NODE=${WORKSPACE_INSTALL_NODE}
-          - NPM_REGISTRY=${WORKSPACE_NPM_REGISTRY}
-          - NPM_FETCH_RETRIES=${WORKSPACE_NPM_FETCH_RETRIES}
-          - NPM_FETCH_RETRY_FACTOR=${WORKSPACE_NPM_FETCH_RETRY_FACTOR}
-          - NPM_FETCH_RETRY_MINTIMEOUT=${WORKSPACE_NPM_FETCH_RETRY_MINTIMEOUT}
-          - NPM_FETCH_RETRY_MAXTIMEOUT=${WORKSPACE_NPM_FETCH_RETRY_MAXTIMEOUT}
-          - INSTALL_PNPM=${WORKSPACE_INSTALL_PNPM}
-          - INSTALL_YARN=${WORKSPACE_INSTALL_YARN}
-          - INSTALL_NPM_VUE_CLI=${WORKSPACE_INSTALL_NPM_VUE_CLI}
-          - COMPOSER_GLOBAL_INSTALL=${WORKSPACE_COMPOSER_GLOBAL_INSTALL}
-          - COMPOSER_VERSION=${WORKSPACE_COMPOSER_VERSION}
-          - COMPOSER_AUTH_JSON=${WORKSPACE_COMPOSER_AUTH_JSON}
-          - COMPOSER_REPO_PACKAGIST=${WORKSPACE_COMPOSER_REPO_PACKAGIST}
-          - INSTALL_WORKSPACE_SSH=${WORKSPACE_INSTALL_WORKSPACE_SSH}
-          - INSTALL_PYTHON=${WORKSPACE_INSTALL_PYTHON}
-          - INSTALL_PYTHON3=${WORKSPACE_INSTALL_PYTHON3}
-          - PUID=${WORKSPACE_PUID}
-          - PGID=${WORKSPACE_PGID}
-          - NODE_VERSION=${WORKSPACE_NODE_VERSION}
-          - YARN_VERSION=${WORKSPACE_YARN_VERSION}
+          - USERNAME=${WORKSPACE_USERNAME}
           - http_proxy
           - https_proxy
           - no_proxy
@@ -80,16 +55,11 @@ services:
       build:
         context: ./php-fpm
         args:
-          - KAMIDOCK_PHP_VERSION=${PHP_VERSION}
-          - INSTALL_XDEBUG=${PHP_FPM_INSTALL_XDEBUG}
-          - INSTALL_BCMATH=${PHP_FPM_INSTALL_BCMATH}
-          - PUID=${PHP_FPM_PUID}
-          - PGID=${PHP_FPM_PGID}
           - http_proxy
           - https_proxy
           - no_proxy
       volumes:
-        - ./php-fpm/php${PHP_VERSION}.ini:/usr/local/etc/php/php.ini
+        - ./php-fpm/php8.1.ini:/usr/local/etc/php/php.ini
         - ${APP_CODE_PATH_HOST}:${APP_CODE_PATH_CONTAINER}
         - docker-in-docker:/certs/client
       ports:
@@ -112,7 +82,7 @@ services:
         - docker-in-docker
       image: ${DOCKER_HUB_ID}/${REPOSITORY}:php-fpm
 
-### NGINX Server #########################################
+# ### NGINX Server #########################################
     nginx:
       build:
         context: ./nginx
@@ -137,7 +107,7 @@ services:
         - backend
       image: ${DOCKER_HUB_ID}/${REPOSITORY}:nginx
 
-### MySQL ################################################
+# ### MySQL ################################################
     mysql:
       build:
         context: ./mysql
@@ -148,7 +118,6 @@ services:
         - MYSQL_USER=${MYSQL_USER}
         - MYSQL_PASSWORD=${MYSQL_PASSWORD}
         - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-        - TZ=${WORKSPACE_TIMEZONE}
       volumes:
         - ${DATA_PATH_HOST}/mysql:/var/lib/mysql
         - ${MYSQL_ENTRYPOINT_INITDB}:/docker-entrypoint-initdb.d
@@ -158,7 +127,7 @@ services:
         - backend
       image: ${DOCKER_HUB_ID}/${REPOSITORY}:mysql
 
-### phpMyAdmin ###########################################
+# ### phpMyAdmin ###########################################
     phpmyadmin:
       build: ./phpmyadmin
       environment:
@@ -180,7 +149,7 @@ services:
 
 ### Docker-in-Docker ################################################
     docker-in-docker:
-      image: docker:latest
+      image: docker:20.10-dind
       environment:
         DOCKER_TLS_SAN: DNS:docker-in-docker
       privileged: true
