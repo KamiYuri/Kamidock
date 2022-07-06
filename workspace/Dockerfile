@@ -170,13 +170,16 @@ RUN rm -f /etc/service/sshd/down && \
     && cp -rf /root/.ssh /home/${USERNAME} \
     && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.ssh
 
+USER ${USERNAME}
+
 ###########################################################################
 # Node / NVM:
 ###########################################################################
 
 # Check if NVM needs to be installed
 ARG NODE_VERSION=node
-ENV NODE_VERSION ${NODE_VERSION}
+ARG INSTALL_NODE=true
+ARG INSTALL_NPM_VUE_CLI=true
 ARG NPM_FETCH_RETRIES
 ENV NPM_FETCH_RETRIES ${NPM_FETCH_RETRIES}
 ARG NPM_FETCH_RETRY_FACTOR
@@ -187,8 +190,9 @@ ARG NPM_FETCH_RETRY_MAXTIMEOUT
 ENV NPM_FETCH_RETRY_MAXTIMEOUT ${NPM_FETCH_RETRY_MAXTIMEOUT}
 ENV NVM_DIR /home/${USERNAME}/.nvm
 
-# Install nvm (A Node Version Manager)
-RUN mkdir -p $NVM_DIR && \
+RUN if [ ${INSTALL_NODE} = true ]; then \
+    # Install nvm (A Node Version Manager)
+    mkdir -p $NVM_DIR && \
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash \
         && . $NVM_DIR/nvm.sh \
         && nvm install ${NODE_VERSION} \
@@ -204,35 +208,40 @@ RUN mkdir -p $NVM_DIR && \
         && if [ ${INSTALL_NPM_VUE_CLI} = true ]; then \
         npm install -g @vue/cli \
         ;fi \
-        && ln -s `npm bin --global` /home/${USERNAME}/.node-bin
+        && ln -s `npm bin --global` /home/${USERNAME}/.node-bin \
+;fi
 
 # Wouldn't execute when added to the RUN statement in the above block
 # Source NVM when loading bash since ~/.profile isn't loaded on non-login shell
-RUN echo "" >> ~/.bashrc && \
+RUN if [ ${INSTALL_NODE} = true ]; then \
+    echo "" >> ~/.bashrc && \
     echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.bashrc && \
-    echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"  # This loads nvm' >> ~/.bashrc
+    echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"  # This loads nvm' >> ~/.bashrc \
+;fi
 
 # Add NVM binaries to root's .bashrc
 USER root
 
-RUN echo "" >> ~/.bashrc && \
+RUN if [ ${INSTALL_NODE} = true ]; then \
+    echo "" >> ~/.bashrc && \
     echo 'export NVM_DIR="/home/${USERNAME}/.nvm"' >> ~/.bashrc && \
-    echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"  # This loads nvm' >> ~/.bashrc
+    echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"  # This loads nvm' >> ~/.bashrc \
+;fi
 
 # Add PATH for node
 ENV PATH $PATH:/home/${USERNAME}/.node-bin
 
 # Make it so the node modules can be executed with 'docker-compose exec'
 # We'll create symbolic links into '/usr/local/bin'.
-RUN find $NVM_DIR -type f -name node -exec ln -s {} /usr/local/bin/node \; && \
+RUN if [ ${INSTALL_NODE} = true ]; then \
+    find $NVM_DIR -type f -name node -exec ln -s {} /usr/local/bin/node \; && \
     NODE_MODS_DIR="$NVM_DIR/versions/node/$(node -v)/lib/node_modules" && \
-    ln -s $NODE_MODS_DIR/bower/bin/bower /usr/local/bin/bower && \
-    ln -s $NODE_MODS_DIR/gulp/bin/gulp.js /usr/local/bin/gulp && \
     ln -s $NODE_MODS_DIR/npm/bin/npm-cli.js /usr/local/bin/npm && \
     ln -s $NODE_MODS_DIR/npm/bin/npx-cli.js /usr/local/bin/npx && \
     ln -s $NODE_MODS_DIR/vue-cli/bin/vue /usr/local/bin/vue && \
     ln -s $NODE_MODS_DIR/vue-cli/bin/vue-init /usr/local/bin/vue-init && \
-    ln -s $NODE_MODS_DIR/vue-cli/bin/vue-list /usr/local/bin/vue-list 
+    ln -s $NODE_MODS_DIR/vue-cli/bin/vue-list /usr/local/bin/vue-list \
+;fi
 
 RUN if [ ${NPM_REGISTRY} ]; then \
     . ~/.bashrc && npm config set registry ${NPM_REGISTRY} \
@@ -248,7 +257,7 @@ COPY ./.npmrc /home/${USERNAME}/.npmrc
 
 USER ${USERNAME}
 
-ARG INSTALL_YARN=false
+ARG INSTALL_YARN=true
 ARG YARN_VERSION=latest
 ENV YARN_VERSION ${YARN_VERSION}
 
